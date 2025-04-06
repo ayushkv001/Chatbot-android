@@ -7,10 +7,11 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import java.io.IOException;
 
-public class ChatGPTClient {
 
-    private static final String API_URL = "https://api.openai.com/v1/chat/completions";
-    private static final String API_KEY = API.API_KEY_3;
+public class ChatGPTClient {
+    // Using the free model available on Gemini API
+    private static final String API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+    private static final String API_KEY = API.GEMINI_API_KEY;// Get API key from class API in form of string
 
     public interface ResponseCallback {
         void onResponse(String response);
@@ -21,32 +22,43 @@ public class ChatGPTClient {
         OkHttpClient client = new OkHttpClient();
 
         try {
-            // Create the JSON request body correctly
+            // Create the JSON request body for Gemini API
             JSONObject jsonBody = new JSONObject();
-            jsonBody.put("model", "gpt-3.5-turbo");
 
-            // Create messages array properly
-            JSONArray messagesArray = new JSONArray();
-            JSONObject messageObject = new JSONObject();
-            messageObject.put("role", "user");
-            messageObject.put("content", userMessage);
-            messagesArray.put(messageObject);
+            // Create the parts array with the user message
+            JSONArray partsArray = new JSONArray();
+            JSONObject partObject = new JSONObject();
+            partObject.put("text", userMessage);
+            partsArray.put(partObject);
 
-            jsonBody.put("messages", messagesArray);
+            // Create the content object
+            JSONObject contentObject = new JSONObject();
+            contentObject.put("parts", partsArray);
+            contentObject.put("role", "user");
 
-            // Create the request
+            // Add the content object to contents array
+            JSONArray contentsArray = new JSONArray();
+            contentsArray.put(contentObject);
+            jsonBody.put("contents", contentsArray);
+
+            // Build the URL with the API key as a query parameter
+            HttpUrl url = HttpUrl.parse(API_URL).newBuilder()
+                    .addQueryParameter("key", API_KEY)
+                    .build();
+
+            // Create the request body
             RequestBody body = RequestBody.create(
                     MediaType.parse("application/json"),
                     jsonBody.toString()
             );
 
+            // Build the request
             Request request = new Request.Builder()
-                    .url(API_URL)
-                    .addHeader("Authorization", "Bearer " + API_KEY)
+                    .url(url)
                     .post(body)
                     .build();
 
-            // Execute the request
+            // Execute the request asynchronously
             client.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
@@ -59,17 +71,20 @@ public class ChatGPTClient {
 
                     if (response.isSuccessful()) {
                         try {
+                            // Parse the Gemini API response to extract the text
                             JSONObject jsonResponse = new JSONObject(responseBody);
-                            String botResponse = jsonResponse.getJSONArray("choices")
+                            String botResponse = jsonResponse.getJSONArray("candidates")
                                     .getJSONObject(0)
-                                    .getJSONObject("message")
-                                    .getString("content");
+                                    .getJSONObject("content")
+                                    .getJSONArray("parts")
+                                    .getJSONObject(0)
+                                    .getString("text");
                             callback.onResponse(botResponse);
                         } catch (JSONException e) {
                             callback.onError("JSON parsing error: " + e.getMessage());
                         }
                     } else {
-                        // Return the error message from the API
+                        // Handle API error responses
                         try {
                             JSONObject errorJson = new JSONObject(responseBody);
                             String errorMessage = errorJson.getJSONObject("error").getString("message");
